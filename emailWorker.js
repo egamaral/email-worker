@@ -13,22 +13,11 @@ const JOB_INTERVAL_MINUTES = process.env.JOB_INTERVAL_MINUTES || 1;
 const EMAIL_SENDER = process.env.EMAIL_SENDER;
 const EMAIL_NAME = process.env.EMAIL_NAME;
 const EMAIL_SUBJECT = process.env.EMAIL_SUBJECT;
-const APPLICATION_ENV = process.env.APPLICATION_ENV;
-const APPLICATION_URL = process.env.APPLICATION_URL;
 
 // Configura SendGrid
 sgMail.setApiKey(SENDGRID_API_KEY);
 
-// Importa pool de conexões do utilitário
-// const pool = require('./utils/db');
-
-/**
- * Processa os e-mails pendentes na tabela email_queue.
- * Para cada e-mail:
- *  - Usa transação (BEGIN/COMMIT/ROLLBACK)
- *  - Envia via template do SendGrid
- *  - Marca status como 'sent' ou 'error'
- */
+// Função para processar e-mails pendentes
 async function processPendingEmails() {
     let allSuccess = true;
     let connection;
