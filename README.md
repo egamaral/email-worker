@@ -1,1 +1,1 @@
-# email-workeço de envio de e-mails
+Serviço de envio de envio de e-mails

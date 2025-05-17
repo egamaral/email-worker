@@ -1,9 +1,10 @@
 {
   "name": "email-worker",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Processes email sending tasks from a MySQL database using SendGrid and cron jobs.",
+  "main": "emailWorker.js",
   "scripts": {
+    "start": "node emailWorker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
