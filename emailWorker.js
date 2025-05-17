@@ -4,10 +4,9 @@
 // Melhores práticas: async/await, transações, pool de conexões, templates SendGrid.
 
 require('dotenv').config();
-const mysql = require('mysql2/promise');
 const cron = require('node-cron');
 const sgMail = require('@sendgrid/mail');
-const pool = require('./utils/db');
+const connectToDatabase = require('./utils/db');
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const JOB_INTERVAL_MINUTES = process.env.JOB_INTERVAL_MINUTES || 1;
@@ -31,25 +30,15 @@ sgMail.setApiKey(SENDGRID_API_KEY);
  *  - Marca status como 'sent' ou 'error'
  */
 async function processPendingEmails() {
-    let conn;
     let allSuccess = true;
+    let connection;
     try {
-        conn = await pool.getConnection();
-        const [pendentes] = await conn.execute(`SELECT eq.id,
-                                                        uc.email             AS contact_email,
-                                                        u.first_name         AS firstName,
-                                                        eq.template_id,
-                                                        eq.url
-                                                    FROM email_queue AS eq
-                                                    JOIN user_contacts AS uc
-                                                        ON uc.user_id = eq.user_id
-                                                    JOIN users AS u
-                                                        ON u.user_id = eq.user_id
-                                                    WHERE eq.status = 'pending';`);
+        connection = await connectToDatabase();
+        const [pendentes] = await connection.execute(`SELECT eq.id, uc.email AS contact_email, u.first_name AS firstName, eq.template_id, eq.url FROM email_queue AS eq JOIN user_contacts AS uc ON uc.user_id = eq.user_id JOIN users AS u ON u.user_id = eq.user_id WHERE eq.status = 'pending';`);
         console.log(`Encontrados ${pendentes.length} e-mails pendentes para envio.`);
         for (const email of pendentes) {
             try {
-                await conn.beginTransaction();
+                await connection.beginTransaction();
                 // Define o payload do e-mail
                 const msg = {
                     to: email.contact_email,
@@ -72,13 +61,15 @@ async function processPendingEmails() {
                 const messageId = response[0]?.headers['x-message-id'];
                 if (statusCode !== 202) throw new Error(`Falha no envio do e-mail. Status Code: ${statusCode}`); 
                 // Salva o registro no banco de dados
-                await conn.execute(`INSERT INTO email_logs (email, template_id, message_id, template_name, event) VALUES (?, ?, ?, ?, ?)`, [email.contact_email, email.template_id, messageId, null, 'sent']);
-                await conn.execute("UPDATE email_queue SET status = 'sent', sent_at = NOW() WHERE id = ?", [email.id]);
-                await conn.commit();
+                await connection.execute(`INSERT INTO email_logs (email, template_id, message_id, template_name, event) VALUES (?, ?, ?, ?, ?)`, [email.contact_email, email.template_id, messageId, null, 'sent']);
+                await connection.execute("UPDATE email_queue SET status = 'sent', sent_at = NOW() WHERE id = ?", [email.id]);
+                await connection.commit();
             } catch (error) {
-                await conn.rollback();
+                await connection.rollback();
                 console.error(`Erro ao enviar e-mail ID ${email.id}:`, error.message);
-                await conn.execute("UPDATE email_queue SET status = 'error', error_msg = ? WHERE id = ?", [error.message, email.id]);
+                connection.beginTransaction();
+                await connection.execute("UPDATE email_queue SET status = 'error', error_msg = ? WHERE id = ?", [error.message, email.id]);
+                connection.commit();
                 allSuccess = false;
             }
         }
@@ -86,7 +77,7 @@ async function processPendingEmails() {
         console.error('Falha geral no processamento de e-mails:', error.message);
         allSuccess = false;
     } finally {
-        if (conn) await conn.release();
+        if (connection) await connection.end();
     }
     return allSuccess;
 }
